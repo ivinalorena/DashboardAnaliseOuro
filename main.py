@@ -13,7 +13,7 @@ data = {
     "teste":  (None, None, None, np.arange(i2 + GAP + LOOKBACK, n))
 }
 
-st.set_page_config(page_title="Dashboard de Informações Gerais do Ouro", layout="wide")
+st.set_page_config(page_title="Dashboard Ouro", layout="wide")
 
 st.markdown(
     """
