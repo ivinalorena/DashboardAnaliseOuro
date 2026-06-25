@@ -1,6 +1,16 @@
 import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
+RSI_OB,  RSI_OS  = 0.40, -0.40
+BB_OB,   BB_OS   = 0.40, -0.40
+
+LOOKBACK = 60  # tamanho da janela deslizante (dias)
+HORIZONS = [5, 15, 30]  # horizontes de predição
+GAP = max(HORIZONS)  # gap entre splits (anti-vazamento)
 @st.cache_data(show_spinner=False)
 def organizar_df(_df):
     _df = pd.read_csv(_df)
@@ -17,15 +27,6 @@ def df_logreturn(_df):
     log_df["date"] = pd.to_datetime(log_df["date"])
     log_df = log_df.sort_values("date").set_index("date")
     return log_df
-
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import pandas as pd
-
-
-RSI_OB,  RSI_OS  = 0.40, -0.40
-BB_OB,   BB_OS   = 0.40, -0.40
-
 
 def _sinal_atual(valor: float, limiar_ob: float, limiar_os: float) -> str:
     if valor > limiar_ob:
@@ -218,3 +219,105 @@ def _hex_to_rgb(hex_color: str) -> tuple:
     """Converte #rrggbb → (r, g, b) em escala 0-1 para o fillcolor do Plotly."""
     h = hex_color.lstrip("#")
     return tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))
+
+
+COLORS = {
+    "treino": "#3b82f6",    
+    "val": "#f0a500",       
+    "teste": "#ef4444"      
+}
+LABELS = {
+    "treino": "Treino",
+    "val": "Validação",
+    "teste": "Teste"
+}
+
+
+def plot_divisao_temporal(df, data):
+    """
+    Plota a série temporal destacando os períodos de treino, validação e teste usando Plotly.
+    
+    Parâmetros:
+    - df: DataFrame com colunas 'date' e 'close'
+    - data: dicionário com chaves 'treino', 'val', 'teste', cada valor é uma tupla
+            (X, Y, P, I) onde I é uma lista/array de índices (posições) que delimitam
+            o intervalo contínuo para aquele conjunto.
+    Retorna:
+    - fig: objeto plotly.graph_objects.Figure
+    """
+    fig = go.Figure()
+
+    # 1. Série completa (fundo cinza)
+    fig.add_trace(go.Scatter(
+        x=df["date"],
+        y=df["close"],
+        mode='lines',
+        line=dict(color="#aaaab8", width=0.8),
+        name="Série completa",
+        showlegend=True,
+        hoverinfo='skip'  # evita poluição no hover
+    ))
+
+    # 2. Para cada conjunto, adiciona o segmento colorido
+    for key, (X, Y, P, I) in data.items():
+        if key not in COLORS:
+            continue
+
+        # Garante que I seja um array/list de inteiros
+        if isinstance(I, (list, np.ndarray)) and len(I) > 0:
+            idx_min = int(min(I))
+            idx_max = int(max(I))
+            seg = df.iloc[idx_min:idx_max+1]
+        else:
+            # fallback (caso I seja algo como slice)
+            seg = df.iloc[I[0]:I[-1]+1]
+
+        # Adiciona o segmento com a cor correspondente
+        fig.add_trace(go.Scatter(
+            x=seg["date"],
+            y=seg["close"],
+            mode='lines',
+            line=dict(color=COLORS[key], width=1.3),
+            name=LABELS.get(key, key),
+            showlegend=True
+        ))
+
+    # 3. Ajustes do layout
+    fig.update_layout(
+        title=dict(
+            text="Divisão temporal — Treino / Validação / Teste",
+            font=dict(size=12),
+            x=0.5,
+            y=0.95
+        ),
+        xaxis=dict(
+            title="",
+            showgrid=False,
+            zeroline=False,
+            showline=True,
+            linecolor='lightgray'
+        ),
+        yaxis=dict(
+            title="US$/oz",
+            showgrid=True,
+            gridcolor='lightgray',
+            zeroline=False,
+            showline=True,
+            linecolor='lightgray'
+        ),
+        legend=dict(
+            font=dict(size=10),
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        ),
+        height=400,
+        width=900,
+        margin=dict(l=50, r=50, t=60, b=50),
+        plot_bgcolor='white',
+        hovermode='x unified'
+    )
+
+    return fig

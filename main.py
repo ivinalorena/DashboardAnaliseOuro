@@ -1,10 +1,17 @@
 import streamlit as st
 import pandas as pd
-from utils import organizar_df, df_logreturn, _sinal_atual,plot_indicadores_tecnicos, plot_drawdown_ano,plot_drawdown_serie
+import numpy as np
+from utils import organizar_df, df_logreturn, _sinal_atual,plot_indicadores_tecnicos, plot_drawdown_ano,plot_drawdown_serie,plot_divisao_temporal, LOOKBACK, GAP,RSI_OS,RSI_OB, BB_OB,BB_OS
 
 
-RSI_OB,  RSI_OS  = 0.40, -0.40
-BB_OB,   BB_OS   = 0.40, -0.40
+df = organizar_df('data/gold_features.csv')
+n = len(df)
+i1, i2 = int(n * 0.70), int(n * 0.85)
+data = {
+    "treino": (None, None, None, np.arange(0, i1)),
+    "val":    (None, None, None, np.arange(i1 + GAP + LOOKBACK, i2)),
+    "teste":  (None, None, None, np.arange(i2 + GAP + LOOKBACK, n))
+}
 
 st.set_page_config(page_title="Dashboard de Informações Gerais do Ouro", layout="wide")
 
@@ -53,7 +60,7 @@ def main():
         return f"{value:.4f}"
 
 
-    df = organizar_df('data/gold_features.csv')
+  
 
     initial_row = df.iloc[0]
     last_row = df.iloc[-1]
@@ -89,28 +96,27 @@ def main():
 
     # colunas (?) 
     st1,st2 = st.columns(2)
-   
+
     def _downsample(_df_in, rule="W", agg="last"):
         """Reduz pontos para visualização. rule='W' = semanal (~80% menos pontos)."""
         resampler = _df_in.resample(rule)
         return resampler.last().dropna() if agg == "last" else resampler.mean().dropna()
 
-
     with st1:
         with st.expander("Informações gerais"):
-            tab1, tab2, tab3 = st.tabs(["Série bruta", "log-return", "-"])
+            tab1, tab2, tab3 = st.tabs(["Série bruta", "Momentum", "-"])
 
             with tab1:
                 chart_df = df[["date", "close"]].copy()
                 chart_df["date"] = pd.to_datetime(chart_df["date"])
                 chart_df = chart_df.set_index("date")
+                # Define altura fixa (ex: 400px)
+                st.line_chart(_downsample(chart_df[["close"]]), height=400)
 
-                st.line_chart(_downsample(chart_df[["close"]]))           # last() — preço de fechamento semanal
-
-            with tab2:  
+            with tab2:
                 logreturn = df_logreturn(df)
                 selected_log_return = st.radio(
-                    "Escolha a série",
+                    "Velocidade que o preço mudou nos últimos dias",
                     options=["log 1", "log 5", "log 21"],
                     horizontal=True,
                 )
@@ -120,29 +126,21 @@ def main():
                     "log 21": "log_ret_21",
                 }
                 col = log_return_map[selected_log_return]
-                st.line_chart(_downsample(logreturn[[col]], agg="mean"), y=col)  # mean() — média dos retornos na semana
+                st.line_chart(_downsample(logreturn[[col]], agg="mean"), y=col, height=400)
 
     with st2:
-        with st.expander("Saída esperada para 5, 15 e 30 dias"):
-            sectab1, sectab2 = st.tabs(["Próximos dias", "---"])
+        with st.expander("Split"):
+            sectab1, sectab2 = st.tabs(["Divisão Temporal", "---"])
             with sectab1:
-                output_df = df[["date", "y_5", "y_15", "y_30"]].copy()
-                output_df["date"] = pd.to_datetime(output_df["date"])
-                output_df = output_df.set_index("date")
+                #st.subheader("Divisão temporal dos dados")
+                fig = plot_divisao_temporal(df, data)   # retorna go.Figure
+                #fig.update_layout(height=490)           # mesma altura
+                st.plotly_chart(fig, width='stretch')
+                #st.caption("Treino (azul) | Validação (laranja) | Teste (vermelho)")
 
-                selected_log_return_dias = st.radio(
-                    "Resultado em dias",
-                    options=["5 dias", "15 dias", "30 dias"],
-                    horizontal=True,
-                )
-                log_return_map_dias = {
-                    "5 dias": "y_5",
-                    "15 dias": "y_15",
-                    "30 dias": "y_30",
-                }
-                col_dias = log_return_map_dias[selected_log_return_dias]
-                st.line_chart(_downsample(output_df[[col_dias]]), y=col_dias) 
-    
+            with sectab2:
+                pass
+
     st.markdown("---")
     st.markdown("## Indicadores: ")
     anos_disponiveis = sorted(pd.to_datetime(df["date"]).dt.year.unique().tolist())
@@ -213,7 +211,7 @@ def main():
                     delta=f"{pct_severo:.1%} do período",
                     delta_color="off")
 
-        st.plotly_chart(plot_drawdown_serie(df_dd), use_container_width=True)
+        st.plotly_chart(plot_drawdown_serie(df_dd), width='stretch')
         st.caption("Drawdown máximo janela de 252 pregões (≈ 1 ano)  •  "
                 " Atenção < −10%  •   Severo < −20%")
 
@@ -240,7 +238,7 @@ def main():
             with an_c3:
                 st.metric("Nível de risco", nivel)
 
-            st.plotly_chart(plot_drawdown_ano(df_dd_ano), use_container_width=True)
+            st.plotly_chart(plot_drawdown_ano(df_dd_ano), width='stretch')
 
 
 
