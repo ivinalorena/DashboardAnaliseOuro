@@ -35,13 +35,12 @@ def _sinal_atual(valor: float, limiar_ob: float, limiar_os: float) -> str:
     return "Neutro"
 
 
-def plot_indicadores_tecnicos(df: pd.DataFrame) -> go.Figure:
-    df_plot = df[["date", "rsi", "boll_b", "macd_hist"]].copy()
-    df_plot["date"] = pd.to_datetime(df_plot["date"])
-    df_plot = df_plot.set_index("date")
+def plot_indicadores_tecnicos(df_idx: pd.DataFrame) -> go.Figure:
+    """df_idx deve ter DatetimeIndex e colunas: rsi, boll_b, macd_hist."""
 
-    # downsample semanal — last() preserva o sinal pontual de cada indicador
-    df_w = df_plot.resample("W").last()
+    rsi  = df_idx["rsi"].dropna()
+    bb   = df_idx["boll_b"].dropna()
+    macd = df_idx["macd_hist"].dropna()
 
     fig = make_subplots(
         rows=3, cols=1,
@@ -51,57 +50,44 @@ def plot_indicadores_tecnicos(df: pd.DataFrame) -> go.Figure:
         row_heights=[0.35, 0.35, 0.30],
     )
 
-   
-    rsi = df_w["rsi"].dropna()
-
-    fig.add_hrect(y0=RSI_OB,  y1=rsi.max() + 0.05,
+    fig.add_hrect(y0=RSI_OB, y1=rsi.max() + 0.05,
                   fillcolor="rgba(239,68,68,0.12)", line_width=0, row=1, col=1)
     fig.add_hrect(y0=rsi.min() - 0.05, y1=RSI_OS,
                   fillcolor="rgba(34,197,94,0.12)", line_width=0, row=1, col=1)
-    fig.add_hline(y=RSI_OB,  line_dash="dot", line_color="rgba(239,68,68,0.6)",  line_width=1, row=1, col=1)
-    fig.add_hline(y=RSI_OS,  line_dash="dot", line_color="rgba(34,197,94,0.6)",  line_width=1, row=1, col=1)
-    fig.add_hline(y=0,        line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1, row=1, col=1)
+    fig.add_hline(y=RSI_OB, line_dash="dot", line_color="rgba(239,68,68,0.6)",   line_width=1, row=1, col=1)
+    fig.add_hline(y=RSI_OS, line_dash="dot", line_color="rgba(34,197,94,0.6)",   line_width=1, row=1, col=1)
+    fig.add_hline(y=0,       line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1, row=1, col=1)
     fig.add_trace(go.Scatter(
-        x=rsi.index, y=rsi,
-        mode="lines", name="RSI",
+        x=rsi.index, y=rsi, mode="lines", name="RSI",
         line=dict(color="#f59e0b", width=1.5),
         hovertemplate="%{x|%d/%m/%Y}<br>RSI: %{y:.3f}<extra></extra>",
     ), row=1, col=1)
 
-  
-    bb = df_w["boll_b"].dropna()
 
-    fig.add_hrect(y0=BB_OB,  y1=bb.max() + 0.05,
+    fig.add_hrect(y0=BB_OB, y1=bb.max() + 0.05,
                   fillcolor="rgba(239,68,68,0.12)", line_width=0, row=2, col=1)
     fig.add_hrect(y0=bb.min() - 0.05, y1=BB_OS,
                   fillcolor="rgba(34,197,94,0.12)", line_width=0, row=2, col=1)
-    fig.add_hline(y=BB_OB,  line_dash="dot", line_color="rgba(239,68,68,0.6)",  line_width=1, row=2, col=1)
-    fig.add_hline(y=BB_OS,  line_dash="dot", line_color="rgba(34,197,94,0.6)",  line_width=1, row=2, col=1)
-    fig.add_hline(y=0,       line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1, row=2, col=1)
+    fig.add_hline(y=BB_OB, line_dash="dot", line_color="rgba(239,68,68,0.6)",   line_width=1, row=2, col=1)
+    fig.add_hline(y=BB_OS, line_dash="dot", line_color="rgba(34,197,94,0.6)",   line_width=1, row=2, col=1)
+    fig.add_hline(y=0,      line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1, row=2, col=1)
     fig.add_trace(go.Scatter(
-        x=bb.index, y=bb,
-        mode="lines", name="Bollinger %B",
+        x=bb.index, y=bb, mode="lines", name="Bollinger %B",
         line=dict(color="#8b5cf6", width=1.5),
         hovertemplate="%{x|%d/%m/%Y}<br>%%B: %{y:.3f}<extra></extra>",
     ), row=2, col=1)
 
-
-    macd = df_w["macd_hist"]
-    colors_macd = ["#ef4444" if v < 0 else "#22c55e" for v in macd]
-
+  
     fig.add_hline(y=0, line_dash="solid", line_color="rgba(150,150,150,0.4)", line_width=1, row=3, col=1)
     fig.add_trace(go.Bar(
-        x=macd.index, y=macd,
-        name="MACD Hist",
-        marker_color=colors_macd,
+        x=macd.index, y=macd, name="MACD Hist",
+        marker_color=["#ef4444" if v < 0 else "#22c55e" for v in macd],
         hovertemplate="%{x|%d/%m/%Y}<br>MACD: %{y:.5f}<extra></extra>",
     ), row=3, col=1)
 
     fig.update_layout(
-        height=650,
-        showlegend=False,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
+        height=650, showlegend=False,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=0, r=10, t=40, b=0),
         hoverlabel=dict(bgcolor="rgba(30,30,30,0.9)", font_color="white"),
     )
@@ -109,3 +95,126 @@ def plot_indicadores_tecnicos(df: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.15)", zeroline=False)
 
     return fig
+
+def plot_drawdown_serie(df_idx: pd.DataFrame) -> go.Figure:
+    """Série completa com anotações nos principais eventos de crise."""
+    dd = df_idx["drawdown_252"].dropna()
+
+    fig = go.Figure()
+
+    
+    fig.add_hrect(y0=-0.10, y1=0.005,
+                  fillcolor="rgba(34,197,94,0.07)", line_width=0)
+    fig.add_hrect(y0=-0.20, y1=-0.10,
+                  fillcolor="rgba(251,146,60,0.12)", line_width=0)
+    fig.add_hrect(y0=-0.50, y1=-0.20,
+                  fillcolor="rgba(239,68,68,0.12)", line_width=0)
+
+    
+    fig.add_hline(y=-0.10, line_dash="dot",
+                  line_color="rgba(251,146,60,0.7)", line_width=1.2,
+                  annotation_text="Atenção −10%",
+                  annotation_position="top right",
+                  annotation_font=dict(color="rgba(251,146,60,0.9)", size=11))
+    fig.add_hline(y=-0.20, line_dash="dot",
+                  line_color="rgba(239,68,68,0.7)", line_width=1.2,
+                  annotation_text="Severo −20%",
+                  annotation_position="top right",
+                  annotation_font=dict(color="rgba(239,68,68,0.9)", size=11))
+
+   
+    fig.add_trace(go.Scatter(
+        x=dd.index, y=dd,
+        mode="lines",
+        fill="tozeroy",
+        fillcolor="rgba(99,102,241,0.13)",
+        line=dict(color="#6366f1", width=1.5),
+        hovertemplate="%{x|%d/%m/%Y}<br>Drawdown: %{y:.2%}<extra></extra>",
+    ))
+
+    
+    crises = [
+        ("2008-11-13", -0.297, "Crise\nfinanceira"),
+        ("2013-06-27", -0.325, "Crash\ndo ouro"),
+        ("2020-11-30", -0.134, "COVID-19"),
+        ("2022-09-26", -0.204, "Fed\nhiking"),
+    ]
+    for data, val, label in crises:
+        fig.add_annotation(
+            x=data, y=val,
+            text=label,
+            showarrow=True,
+            arrowhead=2, arrowsize=1, arrowwidth=1.2,
+            arrowcolor="rgba(239,68,68,0.7)",
+            ax=0, ay=-36,
+            font=dict(size=10, color="#374151"),
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="rgba(209,213,219,0.8)",
+            borderwidth=1, borderpad=3,
+        )
+
+    fig.update_layout(
+        height=380, showlegend=False,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=90, t=20, b=0),
+        hoverlabel=dict(bgcolor="rgba(30,30,30,0.9)", font_color="white"),
+        yaxis=dict(tickformat=".0%", title="Drawdown (252d)"),
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.15)")
+    return fig
+
+
+def plot_drawdown_ano(df_idx: pd.DataFrame) -> go.Figure:
+    """Drawdown filtrado por ano — resolução diária."""
+    dd = df_idx["drawdown_252"].dropna()
+
+    fig = go.Figure()
+
+    fig.add_hrect(y0=-0.10, y1=0.005,
+                  fillcolor="rgba(34,197,94,0.07)", line_width=0)
+    fig.add_hrect(y0=-0.20, y1=-0.10,
+                  fillcolor="rgba(251,146,60,0.12)", line_width=0)
+    fig.add_hrect(y0=-0.50, y1=-0.20,
+                  fillcolor="rgba(239,68,68,0.12)", line_width=0)
+
+    fig.add_hline(y=-0.10, line_dash="dot",
+                  line_color="rgba(251,146,60,0.7)", line_width=1.2,
+                  annotation_text="Atenção −10%",
+                  annotation_position="top right",
+                  annotation_font=dict(color="rgba(251,146,60,0.9)", size=11))
+    fig.add_hline(y=-0.20, line_dash="dot",
+                  line_color="rgba(239,68,68,0.7)", line_width=1.2,
+                  annotation_text="Severo −20%",
+                  annotation_position="top right",
+                  annotation_font=dict(color="rgba(239,68,68,0.9)", size=11))
+
+    
+    pior = dd.min()
+    cor  = "#ef4444" if pior < -0.20 else "#f97316" if pior < -0.10 else "#22c55e"
+
+    fig.add_trace(go.Scatter(
+        x=dd.index, y=dd,
+        mode="lines",
+        fill="tozeroy",
+        fillcolor=f"rgba({','.join(str(int(c*255)) for c in _hex_to_rgb(cor))},0.15)",
+        line=dict(color=cor, width=1.8),
+        hovertemplate="%{x|%d/%m/%Y}<br>Drawdown: %{y:.2%}<extra></extra>",
+    ))
+
+    fig.update_layout(
+        height=300, showlegend=False,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=90, t=10, b=0),
+        hoverlabel=dict(bgcolor="rgba(30,30,30,0.9)", font_color="white"),
+        yaxis=dict(tickformat=".0%"),
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.15)")
+    return fig
+
+
+def _hex_to_rgb(hex_color: str) -> tuple:
+    """Converte #rrggbb → (r, g, b) em escala 0-1 para o fillcolor do Plotly."""
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))

@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
-from utils import organizar_df, df_logreturn, _sinal_atual,plot_indicadores_tecnicos
+from utils import organizar_df, df_logreturn, _sinal_atual,plot_indicadores_tecnicos, plot_drawdown_ano,plot_drawdown_serie
+
+
+RSI_OB,  RSI_OS  = 0.40, -0.40
+BB_OB,   BB_OS   = 0.40, -0.40
+
 st.set_page_config(page_title="Dashboard de Informações Gerais do Ouro", layout="wide")
 
 st.markdown(
@@ -8,7 +13,7 @@ st.markdown(
     <style>
         .stApp {
             background: #ffffff;
-            padding-bottom: 24px;
+            padding-bottom: 10px;
         }
     </style>
     """,
@@ -16,9 +21,11 @@ st.markdown(
 )
 
 
+
+
 def main():
     st.header("Dashboard de Informações Gerais do Ouro")
-    #st.markdown("---")
+    st.markdown("---")
     #st.write("Este dashboard apresenta informações gerais sobre os dados do ouro, incluindo estatísticas descritivas, visualizações e insights relevantes.")
 
     def latest_valid_value(dataframe, column_name):
@@ -129,48 +136,123 @@ def main():
     
     st.markdown("---")
     st.markdown("## Indicadores: ")
-    #tab_indicadores = st.tabs(["Indicadores"])
-    #with tab_indicadores:  
-    RSI_OB,  RSI_OS  = 0.40, -0.40
-    BB_OB,   BB_OS   = 0.40, -0.40
-    ultimo = df[["rsi", "boll_b", "macd_hist"]].dropna().iloc[-1]
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("RSI", f"{ultimo['rsi']:.3f}",
-                _sinal_atual(ultimo["rsi"], RSI_OB, RSI_OS))
-        #st.info("Mede a proporção de dias de alta vs. dias de baixa em uma janela")
-    with col2:
-        st.metric("Bollinger %B", f"{ultimo['boll_b']:.3f}",
-                _sinal_atual(ultimo["boll_b"], BB_OB, BB_OS))
-        #with st.expander("Interpretação"):
-        #    st.info("Mostra onde o preço atual está em relação às bandas de desvio-padrão ao redor de uma média móvel.")
-    with col3:
-        macd_val = ultimo["macd_hist"]
-        st.metric("MACD Hist.", f"{macd_val:.5f}",
-                "Positivo" if macd_val > 0 else "Negativo")
-
-    st.plotly_chart(plot_indicadores_tecnicos(df), use_container_width=True)
-
-    st.caption(
-        "Zona vermelha = sobrecompra (limiar ≈ +0.40)    "
-        "Zona verde = sobrevenda (limiar ≈ −0.40)  "
-
-        "Série amostrada semanalmente"
+    anos_disponiveis = sorted(pd.to_datetime(df["date"]).dt.year.unique().tolist())
+    ano_selecionado = st.select_slider(
+        "Selecione o ano",
+        options = anos_disponiveis,
+        value = anos_disponiveis[-1],
     )
 
+    mask = pd.to_datetime(df["date"]).dt.year == ano_selecionado
+    df_ano = df[mask][["date","close","rsi","boll_b","macd_hist"]].copy()
+    df_ano["date"] = pd.to_datetime(df_ano["date"])
+    df_ano = df_ano.set_index("date").dropna()
+
+    if df_ano.empty:
+        st.warning(f"Sem dados para {ano_selecionado}")
+    else:
+        ultimo = df_ano.iloc[-1]
+        col1,col2,col3 = st.columns(3)
+
+        with col1:
+            st.metric("RSI", f"{ultimo['rsi']:.3f}", _sinal_atual(ultimo["rsi"], RSI_OB, RSI_OS))
         
+        with col2:
+            st.metric("Bollinger %B", f"{ultimo['boll_b']:.3f}", _sinal_atual(ultimo["boll_b"],BB_OB, BB_OS))
+        
+        with col3:
+            mv = ultimo["macd_hist"]
+            st.metric("MACD Hist.", f"{mv:.5f}",delta = round(mv, 5), delta_color = "normal")
+
+
+        st.plotly_chart(plot_indicadores_tecnicos(df_ano), width='stretch')
+
+        st.caption(
+            f" {df_ano.index[0].strftime('%d/%m/%Y')} → {df_ano.index[-1].strftime('%d/%m/%Y')}  •  "
+            f"{len(df_ano)} pregões  --  "
+            " Sobrecompra > +0.40  --   Sobrevenda < −0.40"
+        )
+    st.markdown("---")
+    st.subheader("Períodos de crise")
+    
+    #st.markdown("## Risco — Drawdown 252 dias")
+
+    dd_tab1, dd_tab2 = st.tabs(["Série completa", "Por ano"])
+
+    # Prepara o df completo com DatetimeIndex uma única vez
+    df_dd = df[["date", "drawdown_252"]].copy()
+    df_dd["date"] = pd.to_datetime(df_dd["date"])
+    df_dd = df_dd.set_index("date").dropna()
+
+    with dd_tab1:
+        # Card com o pior drawdown histórico
+        pior_hist = df_dd["drawdown_252"].min()
+        data_pior = df_dd["drawdown_252"].idxmin()
+        atual_dd  = df_dd["drawdown_252"].iloc[-1]
+
+        dd_c1, dd_c2, dd_c3 = st.columns(3)
+        with dd_c1:
+            st.metric("Drawdown atual", f"{atual_dd:.2%}")
+        with dd_c2:
+            st.metric("Pior histórico", f"{pior_hist:.2%}",
+                    delta=f"{data_pior.strftime('%d/%m/%Y')}",
+                    delta_color="off")
+        with dd_c3:
+            dias_severo = (df_dd["drawdown_252"] < -0.20).sum()
+            pct_severo  = dias_severo / len(df_dd)
+            st.metric("Dias em zona severa", f"{dias_severo}",
+                    delta=f"{pct_severo:.1%} do período",
+                    delta_color="off")
+
+        st.plotly_chart(plot_drawdown_serie(df_dd), use_container_width=True)
+        st.caption("Drawdown máximo janela de 252 pregões (≈ 1 ano)  •  "
+                " Atenção < −10%  •   Severo < −20%")
+
+    with dd_tab2:
+        anos_dd = sorted(df_dd.index.year.unique().tolist())
+        ano_dd  = st.select_slider("Ano", options=anos_dd, value=anos_dd[-1],
+                                    key="slider_dd")
+
+        df_dd_ano = df_dd[df_dd.index.year == ano_dd]
+
+        if df_dd_ano.empty:
+            st.warning(f"Sem dados para {ano_dd}.")
+        else:
+            pior_ano  = df_dd_ano["drawdown_252"].min()
+            media_ano = df_dd_ano["drawdown_252"].mean()
+            nivel     = " Severo" if pior_ano < -0.20 else " Atenção" if pior_ano < -0.10 else " Normal"
+
+            an_c1, an_c2, an_c3 = st.columns(3)
+            with an_c1:
+                st.metric("Pior drawdown do ano", f"{pior_ano:.2%}",
+                        delta=round(pior_ano, 4), delta_color="normal")
+            with an_c2:
+                st.metric("Drawdown médio", f"{media_ano:.2%}")
+            with an_c3:
+                st.metric("Nível de risco", nivel)
+
+            st.plotly_chart(plot_drawdown_ano(df_dd_ano), use_container_width=True)
+
+
 
 
     st.markdown("---")
     # botão do kaggle: 
     st.markdown(
     """
-    <a href="https://www.kaggle.com/datasets/romanfonel/precious-metals-history-since-2000-with-news" target="_blank"
-    style="display:center; align-items:center; gap:0.5rem; padding:0.55rem 0.9rem; border-radius:999px; text-decoration:none; color:#111827; font-weight:600; border:1px solid #bdbdbd; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
-        <span style="font-size:1rem;">Dataset extraído de Kaggle</span>
-        <span style="background:rgba(17,24,39,0.08); padding:0.2rem 0.55rem; border-radius:999px; font-size:0.78rem; letter-spacing:0.02em;">Abrir fonte</span>
-    </a>
+    <div style="display:flex; justify-content:center; margin-top:5px;">
+            <a href="https://www.kaggle.com/datasets/romanfonel/precious-metals-history-since-2000-with-news" target="_blank"
+            style="display:flex; align-items:center; gap:0.4rem; text-decoration:none;
+                color:#6b7280; font-size:0.85rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Dataset extraído do Kaggle
+            </a>
+        </div>
     """,
     unsafe_allow_html=True)
     #####################################################
