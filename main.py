@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from utils import organizar_df, df_logreturn
+from utils import organizar_df, df_logreturn, _sinal_atual,plot_indicadores_tecnicos
 st.set_page_config(page_title="Dashboard de Informações Gerais do Ouro", layout="wide")
 
 st.markdown(
@@ -18,7 +18,8 @@ st.markdown(
 
 def main():
     st.header("Dashboard de Informações Gerais do Ouro")
-    st.write("Este dashboard apresenta informações gerais sobre os dados do ouro, incluindo estatísticas descritivas, visualizações e insights relevantes.")
+    #st.markdown("---")
+    #st.write("Este dashboard apresenta informações gerais sobre os dados do ouro, incluindo estatísticas descritivas, visualizações e insights relevantes.")
 
     def latest_valid_value(dataframe, column_name):
         if column_name not in dataframe.columns:
@@ -124,8 +125,39 @@ def main():
                     "30 dias": "y_30",
                 }
                 col_dias = log_return_map_dias[selected_log_return_dias]
-                st.line_chart(_downsample(output_df[[col_dias]]), y=col_dias)    # last() — valor target no fim da semana
-                
+                st.line_chart(_downsample(output_df[[col_dias]]), y=col_dias) 
+    
+    st.markdown("---")
+    st.markdown("## Indicadores: ")
+    #tab_indicadores = st.tabs(["Indicadores"])
+    #with tab_indicadores:  
+    RSI_OB,  RSI_OS  = 0.40, -0.40
+    BB_OB,   BB_OS   = 0.40, -0.40
+    ultimo = df[["rsi", "boll_b", "macd_hist"]].dropna().iloc[-1]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("RSI", f"{ultimo['rsi']:.3f}",
+                _sinal_atual(ultimo["rsi"], RSI_OB, RSI_OS))
+        #st.info("Mede a proporção de dias de alta vs. dias de baixa em uma janela")
+    with col2:
+        st.metric("Bollinger %B", f"{ultimo['boll_b']:.3f}",
+                _sinal_atual(ultimo["boll_b"], BB_OB, BB_OS))
+        #with st.expander("Interpretação"):
+        #    st.info("Mostra onde o preço atual está em relação às bandas de desvio-padrão ao redor de uma média móvel.")
+    with col3:
+        macd_val = ultimo["macd_hist"]
+        st.metric("MACD Hist.", f"{macd_val:.5f}",
+                "Positivo" if macd_val > 0 else "Negativo")
+
+    st.plotly_chart(plot_indicadores_tecnicos(df), use_container_width=True)
+
+    st.caption(
+        "Zona vermelha = sobrecompra (limiar ≈ +0.40)    "
+        "Zona verde = sobrevenda (limiar ≈ −0.40)  "
+
+        "Série amostrada semanalmente"
+    )
 
         
 
